@@ -1,16 +1,16 @@
-"""Промпты и структурные схемы для LLM-вызовов агента-стилиста.
+"""Промпты агента-стилиста — всё, что мы говорим модели.
 
-Как и в Workshop 1, промпт — это отдельный слой, а не строка внутри агента.
-Здесь же лежат маленькие pydantic-схемы для структурных вызовов (NLU-разбор
-запроса) — они идут в `LLM.complete_structured` и валидируют ответ модели.
+Как и в Workshop 1, промпт — это отдельный слой, а не строка внутри агента:
+их часто правят и тюнят отдельно от логики.
+
+Что лежит здесь, а что нет:
+  * КОНСТАНТА — статичная инструкция «кто ты и как себя веди» (system-часть);
+  * ФУНКЦИЯ   — сборка сообщения из данных, когда есть что склеивать
+                (например, вопрос + найденные правила);
+  * схемы структурных ответов живут в `agent/schemas.py`, а не тут.
 """
 
 from __future__ import annotations
-
-import re
-from typing import Literal, Optional
-
-from pydantic import BaseModel, Field
 
 from app.agent.schemas import RetrievedRule
 
@@ -18,16 +18,7 @@ from app.agent.schemas import RetrievedRule
 # =========================================================================
 #  1. Разбор запроса (NLU): интент + ограничения одним структурным вызовом
 # =========================================================================
-
-
-class RequestNLU(BaseModel):
-    """Что пользователь хочет и какие ограничения назвал (null = не сказал)."""
-
-    intent: Literal["new_look", "refine", "question"] = "new_look"
-    occasion: Optional[str] = None
-    budget_rub: Optional[int] = None
-    season: Optional[str] = None
-    avoid: list[str] = Field(default_factory=list)
+#  Схема ответа — `RequestNLU` в agent/schemas.py.
 
 
 SYSTEM_PROMPT_NLU = (
@@ -41,38 +32,6 @@ SYSTEM_PROMPT_NLU = (
     "- avoid: чего избегать («без юбки», «не люблю принты» -> [\"юбка\", \"принты\"]).\n"
     "Не выдумывай: чего в тексте нет — оставляй null или пустой список."
 )
-
-
-# Ключевые слова для эвристического разбора (STUB-режим и фолбэк при ошибке LLM).
-_QUESTION_MARKERS = ("совет", "идёт ли", "идет ли", "подойд", "как носить", "?", "сочета")
-_OCCASION_MARKERS = {
-    "офис": "офис", "работ": "офис", "свидан": "свидание", "прогул": "прогулка",
-    "вечерин": "вечеринка", "вечер": "вечеринка", "спорт": "спорт",
-}
-
-
-def heuristic_nlu(text: str) -> RequestNLU:
-    """Разбор без LLM: ключевые слова + число бюджета регуляркой."""
-    t = (text or "").lower()
-
-    intent: Literal["new_look", "refine", "question"] = "new_look"
-    if any(m in t for m in _QUESTION_MARKERS):
-        intent = "question"
-    elif any(w in t for w in ("замен", "доработ", "другой", "переделай")):
-        intent = "refine"
-
-    occasion = next((v for k, v in _OCCASION_MARKERS.items() if k in t), None)
-
-    budget = None
-    m = re.search(r"(\d[\d\s]{2,})\s*(?:руб|₽|р\b|тыс|k)?", t)
-    if m:
-        budget = int(m.group(1).replace(" ", ""))
-
-    avoid = []
-    for m in re.finditer(r"без\s+([а-яё]+)", t):
-        avoid.append(m.group(1))
-
-    return RequestNLU(intent=intent, occasion=occasion, budget_rub=budget, avoid=avoid)
 
 
 # =========================================================================
@@ -98,3 +57,23 @@ def build_context(rules: list[RetrievedRule]) -> str:
 def build_user_prompt(question: str, context: str) -> str:
     """Пользовательское сообщение = вопрос + найденный контекст."""
     return f"КОНТЕКСТ:\n{context}\n\nВОПРОС ПОЛЬЗОВАТЕЛЯ:\n{question}"
+
+
+# =========================================================================
+#  3. Анализ фото (vision): внешность и вкус по фото-референсам
+# =========================================================================
+
+
+PROMPT_APPEARANCE = (
+    "Ты стилист-колорист. По фото фигуры и/или лица определи внешность и верни "
+    "поля: color_type (весна/лето/осень/зима), undertone (тёплый/холодный/"
+    "нейтральный), contrast (низкий/средний/высокий), body_shape (тип фигуры), "
+    "face_shape (форма лица). Если признак не определить — оставь null."
+)
+
+PROMPT_TASTE = (
+    "Ты стилист. Это фото-референсы образов, которые нравятся человеку. Обобщи "
+    "вкус и верни: styles (стилевые направления), palette (частые цвета), "
+    "silhouettes (силуэты), likes (что человек любит), dislikes (чего избегает). "
+    "Списки — из коротких слов на русском."
+)

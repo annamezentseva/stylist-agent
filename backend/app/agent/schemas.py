@@ -118,6 +118,20 @@ class StylistRequest(BaseModel):
     constraints: Constraints = Field(default_factory=Constraints)
 
 
+class RequestNLU(BaseModel):
+    """Разбор запроса: что пользователь хочет и что назвал (null = не сказал).
+
+    Это схема СТРУКТУРНОГО ОТВЕТА модели: она уходит в `complete_structured`
+    как требуемый формат и валидирует то, что модель вернула.
+    """
+
+    intent: Literal["new_look", "refine", "question"] = "new_look"
+    occasion: Optional[str] = None
+    budget_rub: Optional[int] = None
+    season: Optional[str] = None
+    avoid: list[str] = Field(default_factory=list)
+
+
 class StylistResult(BaseModel):
     """Выход агента: решение + образ/ответ + чем оно обосновано.
 

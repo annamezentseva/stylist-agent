@@ -1,0 +1,23 @@
+{
+  // Прячем служебные папки из проводника, чтобы была видна структура проекта.
+  // Файлы никуда не деваются — они просто не показываются в дереве слева.
+  "files.exclude": {
+    "**/.venv": true,
+    "**/node_modules": true,
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    "**/.pytest_cache": true,
+    "**/*.db": true,
+    "**/.DS_Store": true
+  },
+
+  // Поиск (Cmd+Shift+F) тоже не лазает по библиотекам — иначе тонут свои файлы.
+  "search.exclude": {
+    "**/.venv": true,
+    "**/node_modules": true,
+    "**/dist": true
+  },
+
+  // Python-интерпретатор проекта — из окружения бэкенда.
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python"
+}

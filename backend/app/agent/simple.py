@@ -15,20 +15,21 @@ Workshop 1, но для стиля:
 from __future__ import annotations
 
 import logging
+import re
+from typing import Literal
 
 from app.agent.base import LLM, Agent, Catalog, Retriever, Vision
 from app.agent.compose import compose_look, occasion_tags
 from app.agent.prompts import (
     SYSTEM_PROMPT_ADVICE,
     SYSTEM_PROMPT_NLU,
-    RequestNLU,
     build_context,
     build_user_prompt,
-    heuristic_nlu,
 )
 from app.agent.schemas import (
     Appearance,
     Constraints,
+    RequestNLU,
     StyleProfile,
     StylistAction,
     StylistRequest,
@@ -37,6 +38,41 @@ from app.agent.schemas import (
 from app.config import Settings
 
 logger = logging.getLogger(__name__)
+
+
+# --- Запасной разбор запроса без модели ----------------------------------
+# Работает, когда STUB_LLM=true или когда обращение к модели не удалось.
+# К промптам отношения не имеет: это обычный разбор текста регулярками.
+
+_QUESTION_MARKERS = ("совет", "идёт ли", "идет ли", "подойд", "как носить", "?", "сочета")
+_OCCASION_MARKERS = {
+    "офис": "офис", "работ": "офис", "свидан": "свидание", "прогул": "прогулка",
+    "вечерин": "вечеринка", "вечер": "вечеринка", "спорт": "спорт",
+}
+
+
+def heuristic_nlu(text: str) -> RequestNLU:
+    """Разбор без LLM: ключевые слова + число бюджета регуляркой."""
+    t = (text or "").lower()
+
+    intent: Literal["new_look", "refine", "question"] = "new_look"
+    if any(m in t for m in _QUESTION_MARKERS):
+        intent = "question"
+    elif any(w in t for w in ("замен", "доработ", "другой", "переделай")):
+        intent = "refine"
+
+    occasion = next((v for k, v in _OCCASION_MARKERS.items() if k in t), None)
+
+    budget = None
+    m = re.search(r"(\d[\d\s]{2,})\s*(?:руб|₽|р\b|тыс|k)?", t)
+    if m:
+        budget = int(m.group(1).replace(" ", ""))
+
+    avoid = []
+    for m in re.finditer(r"без\s+([а-яё]+)", t):
+        avoid.append(m.group(1))
+
+    return RequestNLU(intent=intent, occasion=occasion, budget_rub=budget, avoid=avoid)
 
 
 class SimpleStylistAgent(Agent):

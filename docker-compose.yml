@@ -1,0 +1,34 @@
+name: stylist-agent
+
+services:
+  # --- Бэкенд (FastAPI). Агент живёт ВНУТРИ бэкенда (in-process). ---
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      # База — файл SQLite в volume, чтобы данные переживали перезапуск.
+      DATABASE_URL: sqlite+aiosqlite:////app/var/stylist.db
+      KNOWLEDGE_BASE_DIR: /app/knowledge_base
+      CATALOG_SNAPSHOT: /app/data/catalog.json
+    ports:
+      - "8000:8000"
+    volumes:
+      - dbdata:/app/var
+      # Правки базы знаний и каталога подхватываются без пересборки образа.
+      - ./backend/knowledge_base:/app/knowledge_base
+      - ./backend/data:/app/data
+      # Горячая перезагрузка кода (опционально):
+      # - ./backend/app:/app/app
+    # Для hot-reload раскомментируйте строку выше и эту:
+    # command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # --- Фронтенд (React, собранный и отданный через nginx) ---
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  dbdata:

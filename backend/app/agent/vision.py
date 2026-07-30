@@ -20,6 +20,7 @@ from pathlib import Path
 import httpx
 
 from app.agent.base import Vision
+from app.agent.prompts import PROMPT_APPEARANCE, PROMPT_TASTE
 from app.agent.schemas import Appearance, StyleProfile
 from app.config import Settings
 
@@ -54,21 +55,6 @@ class StubVision(Vision):
 
 
 # --- Боевой режим: мультимодальный вызов API со structured output ---
-
-
-_APPEARANCE_PROMPT = (
-    "Ты стилист-колорист. По фото фигуры и/или лица определи внешность и верни "
-    "поля: color_type (весна/лето/осень/зима), undertone (тёплый/холодный/"
-    "нейтральный), contrast (низкий/средний/высокий), body_shape (тип фигуры), "
-    "face_shape (форма лица). Если признак не определить — оставь null."
-)
-
-_TASTE_PROMPT = (
-    "Ты стилист. Это фото-референсы образов, которые нравятся человеку. Обобщи "
-    "вкус и верни: styles (стилевые направления), palette (частые цвета), "
-    "silhouettes (силуэты), likes (что человек любит), dislikes (чего избегает). "
-    "Списки — из коротких слов на русском."
-)
 
 
 def _image_url(ref: str) -> str:
@@ -124,11 +110,11 @@ class ApiVision(Vision):
     ) -> Appearance:
         if not image_refs:
             return Appearance()  # нет фото — пустой профиль, без краша
-        return await self._extract(image_refs, _APPEARANCE_PROMPT, Appearance)
+        return await self._extract(image_refs, PROMPT_APPEARANCE, Appearance)
 
     async def profile_taste(
         self, image_refs: list[str], hint: dict | None = None
     ) -> StyleProfile:
         if not image_refs:
             return StyleProfile()
-        return await self._extract(image_refs, _TASTE_PROMPT, StyleProfile)
+        return await self._extract(image_refs, PROMPT_TASTE, StyleProfile)
