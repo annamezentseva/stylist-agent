@@ -2,9 +2,9 @@
 
 Слой, который прячет конкретного провайдера. Агент вызывает `complete` и
 `complete_structured`, ничего не зная про OpenAI, OpenRouter, ключи и HTTP —
-провайдер меняется одной настройкой `llm_base_url`. Один-в-один идея из
-Workshop 1: структурный вызов кладёт в system JSON Schema модели, включает
-response_format=json_object и валидирует ответ через pydantic.
+провайдер меняется одной настройкой `llm_base_url`. Структурный вызов кладёт в
+system JSON Schema модели, включает response_format=json_object и валидирует
+ответ через pydantic.
 """
 
 from __future__ import annotations
