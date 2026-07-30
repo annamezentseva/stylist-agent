@@ -26,22 +26,24 @@ async def list_looks(
     return [LookSummary.model_validate(r) for r in records]
 
 
-@router.get("/looks/{look_id}")
+@router.get("/looks/{look_id}", response_model=LookOut)
 async def get_look(
     look_id: int, service: StylistService = Depends(get_stylist_service)
-) -> dict:
+) -> LookOut:
+    """Открыть сохранённый образ или ответ из истории."""
     try:
         record = await service.get_look(look_id)
     except LookNotFound:
         raise HTTPException(status_code=404, detail="Образ не найден") from None
-    return {
-        "id": record.id,
-        "action": record.action,
-        "answer": record.answer,
-        "rationale": record.rationale,
-        "items": record.items,
-        "sources": record.sources,
-    }
+    return LookOut(
+        id=record.id,
+        action=record.action,
+        answer=record.answer,
+        items=record.items,
+        rationale=record.rationale,
+        sources=record.sources,
+        total_price=sum(it.get("price", 0) for it in record.items),
+    )
 
 
 @router.get("/profile", response_model=ProfileOut)

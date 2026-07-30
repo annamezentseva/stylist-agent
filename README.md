@@ -1,204 +1,119 @@
-# 👗 Stylist Bot — Telegram-бот-стилист на мультиагентном графе
+# 👗 Стилист — ИИ-агент подбора образов
 
-AI-агент, который собирает готовые образы под конкретного человека по **фото фигуры/лица**
-и **вкусу, выявленному из фото-референсов**, и подбирает одежду, **реально доступную в
-московских магазинах** (с проверкой наличия, размера и цены).
+Агент собирает готовый образ из каталога одежды под конкретного человека: учитывает
+цветотип, вкус, повод, бюджет и размеры. Отвечает и на вопросы по стилю — по базе
+знаний из 69 правил (колористика, фигуры, дресс-код, трендовые приёмы).
 
-Дипломный проект №1 (курс по AI-агентам). Полное архитектурное обоснование — в
-[docs/adr/ADR-001-architecture.md](docs/adr/ADR-001-architecture.md).
+Архитектура повторяет учебный проект Workshop 1: тонкий API-слой, сервис-оркестратор
+и слой агента за абстрактными интерфейсами.
+
+> Предыдущая версия проекта (мультиагентный граф на LangGraph, RL-персонализация,
+> LangFuse) описана в [docs/README-графовая-версия.md](docs/README-графовая-версия.md).
+> Её код доступен в истории git — коммит `f68aa5e`.
 
 ---
 
-## Какую задачу решает агент
+## Быстрый старт
 
-Пользователь присылает фото фигуры/лица + 3–7 фото нравящихся образов + повод и бюджет →
-бот выдаёт 1–3 образа из вещей, которые можно купить в Москве, с обоснованием и ссылками.
+Нужны Python 3.12+ и Node 18+. Ключи API **не нужны** — приложение работает
+на встроенных эвристиках.
 
-## Архитектура (схема графа)
-
-```mermaid
-flowchart TD
-    START([update]) --> ROUTER{router}
-    ROUTER -->|question| ADVISOR[advisor_qa · RAG]
-    ROUTER -->|photo| INGEST[photo_ingest]
-    ROUTER -->|new_look/refine| GATE
-    INGEST --> GATE
-    GATE{gate:\nчего не хватает?} -->|нет анализа| ANALYZE[appearance_analyzer]
-    GATE -->|нет вкуса| TASTE[taste_profiler]
-    GATE -->|нет ограничений| ELICIT[preference_dialog]
-    GATE -->|профиль полон| RETRIEVE[retriever · RAG-каталог]
-    ANALYZE --> GATE
-    TASTE --> GATE
-    ELICIT --> GATE
-    RETRIEVE --> COMPOSE[composer] --> CRITIC{critic}
-    CRITIC -->|reject & iter<N| RETRIEVE
-    CRITIC -->|approve| PRESENT[presenter] --> END([ответ])
-    ADVISOR --> END
-```
-
-**Три точки ветвления:** `router` (интент), `gate` (полнота профиля), `critic` (петля самокоррекции).
-
-### Почему агент, а не pipeline
-Скелет пути детерминирован (надёжно, дёшево, тестируемо), но три места принимают решение
-по контексту — это и делает граф нелинейным агентом. Свободный ReAct избыточен: он
-недетерминирован, плохо ложится на бенчмарк и жжёт токены дорогой vision-модели.
-
-### Почему нужен RAG
-«Реально доступно в Москве» невозможно без retrieval по **живому каталогу товаров** (модель
-не знает актуальный ассортимент и цены). Второй RAG — по **базе правил стиля** — обосновывает
-советы и критику. Каталог — **гибрид**: снимок как основа + live-API по флагу `CATALOG_MODE`.
-
-## Инструменты (≥3, ≥1 внешний)
-
-| Tool | Внешний? | Назначение |
-|------|----------|-----------|
-| `search_catalog` | **API маркетплейса** | поиск товаров с доставкой по Москве |
-| `check_availability` | **API маркетплейса** | наличие/размер/цена на момент выдачи |
-| `retrieve_styling_rules` | RAG | правила колористики/фигуры/капсул |
-| `analyze_appearance` / `profile_taste` | облачный vision | атрибуты из фото |
-| `save_look_collage` | файловая система | карточка/коллаж образа |
-
-## Запуск
+**1. Бэкенд** (терминал 1):
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-# демонстрация графа (без ключей, STUB-режим)
-PYTHONPATH=src python demo_cli.py
-
-# бенчмарк: success_rate / latency p95
-PYTHONPATH=src python evals/run_bench.py
-
-# backend-API (FastAPI) — «мозг» агента за HTTP
-PYTHONPATH=src uvicorn stylist.api.app:app --port 8000
-#   curl -s localhost:8000/health
-#   curl -s -X POST localhost:8000/message -H 'Content-Type: application/json' -d '{"text":"Собери образ в офис"}'
-
-# Telegram — тонкий клиент API (нужны TELEGRAM_TOKEN и запущенный API)
-PYTHONPATH=src python -m stylist.bot.telegram_app
-
-# инкрементальное обновление каталога (по расписанию)
-PYTHONPATH=src python scripts/sync_catalog.py
-
-# демо персонализации (контекстный бандит на фидбэке)
-PYTHONPATH=src python scripts/demo_personalization.py
-
-# трассируемый прогон в LangFuse (проверка observability)
-PYTHONPATH=src python scripts/trace_smoke.py
+cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
-## Configuration reference (.env)
+```bash
+cd backend && .venv/bin/uvicorn app.main:app --reload
+```
 
-Шаблон — [.env.example](.env.example). Все переменные читаются в [src/stylist/config.py](src/stylist/config.py) (`.env` подхватывается автоматически через dotenv).
+**2. Фронтенд** (терминал 2):
 
-| Переменная | Назначение | Дефолт |
+```bash
+cd frontend && npm install && npm run dev
+```
+
+Откройте http://localhost:5173 — документация API на http://localhost:8000/docs
+
+---
+
+## Как это устроено
+
+```
+Стилист/
+├── backend/          FastAPI + SQLite
+│   ├── app/
+│   │   ├── api/          HTTP-эндпоинты
+│   │   ├── services/     оркестрация: профиль → агент → сохранение
+│   │   └── agent/        «мозг»: не знает про HTTP и БД
+│   ├── data/             каталог вещей (JSON)
+│   └── knowledge_base/   правила стиля (markdown)
+└── frontend/         React + Vite + TypeScript
+    └── src/
+        ├── pages/        Подбор образа · Профиль
+        ├── components/   карточки вещей, бейджи
+        ├── api.ts        клиент к бэкенду
+        └── types.ts      зеркало схем бэкенда
+```
+
+### Путь запроса
+
+```
+Пользователь пишет «собери образ на свидание до 12000»
+   │
+   ├─ StylistService  поднимает профиль пользователя из БД
+   │
+   ├─ Агент
+   │     1. понять запрос      интент, бюджет, повод, ограничения
+   │     2. обогатить профиль  внешность и вкус из фото
+   │     3. развилка:
+   │          вопрос  → поиск по базе знаний → совет
+   │          образ   → каталог + сборка по слотам
+   │          не вышло→ сказать, чего не хватает
+   │
+   └─ StylistService  сохраняет профиль и запись в историю
+```
+
+Три возможных ответа агента видны в интерфейсе бейджем: **Образ собран**,
+**Совет стилиста**, **Нужны данные**.
+
+---
+
+## Данные
+
+| Что | Где | Как менять |
 |---|---|---|
-| `STUB_LLM` | `true` = LLM/vision на детерминированных заглушках (без ключей и оплаты) | `true` |
-| `CATALOG_MODE` | `snapshot` (файл-снимок) или `live` (API маркетплейса) | `snapshot` |
-| `SNAPSHOT_PATH` | путь к снимку каталога | `data/catalog_snapshot.sample.json` |
-| `MAX_ITERATIONS` | лимит петли самокоррекции critic→retriever | `2` |
-| `MAX_GATE_TRIES` | сколько раз gate дёргает один сборщик профиля (защита от зацикливания) | `1` |
-| `PERSONALIZATION` | `true` = реранк выдачи контекстным бандитом по фидбэку | `false` |
-| `OPENAI_API_KEY` | ключ OpenAI (боевой vision/LLM; читается SDK напрямую) | — |
-| `VISION_API_KEY` | ключ vision-модели (если пуст — берётся `OPENAI_API_KEY`) | — |
-| `VISION_MODEL` | мультимодальная модель для анализа фото | `gpt-4o-mini` |
-| `LLM_API_KEY` / `LLM_MODEL` | text-LLM (судья, оркестрация) | — |
-| `TELEGRAM_TOKEN` | токен бота от @BotFather | — |
-| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | ключи проекта LangFuse (пусто = трейсинг выключен) | — |
-| `LANGFUSE_HOST` | хост LangFuse | `https://cloud.langfuse.com` |
-| `DATABASE_URL` | БД состояния: локально SQLite, в проде Postgres | `sqlite:///data/stylist.db` |
-| `API_URL` | адрес backend-API для клиентов (бот) | `http://localhost:8000` |
-| `API_TOKEN` | секрет заголовка `X-API-Token` (пусто = без проверки) | — |
-| `UPLOAD_DIR` | куда складывать фото пользователей | `data/uploads` |
-| `DEFAULT_USER_ID` | пользователь в режиме «без входа» | `me` |
+| Каталог вещей | `backend/data/catalog.json` | отредактировать JSON и удалить `backend/stylist.db` |
+| Правила стиля | `backend/knowledge_base/*.md` | дописать абзац; каждый абзац — отдельный фрагмент для поиска |
 
-## Серверная форма — Фаза 1 (см. [ADR-003](docs/adr/ADR-003-backend-service-and-deploy.md))
+Формат правила: жирный список тегов, затем сам текст. При поиске совпадение с
+тегом весит больше, чем совпадение в тексте, — поэтому правило и находится.
 
-Агент вынесен в **backend-сервис**: `stylist.api.app` (FastAPI) держит граф, а Telegram и
-будущий веб-UI — тонкие клиенты одного API (`/message`, `/photo`, `/feedback`, `/new_arrivals`).
-Состояние (каталог, фидбэк, профиль пользователя) — в **общей БД** через SQLAlchemy: локально
-SQLite (`data/stylist.db`, автосидинг из снимка), в проде **Postgres** (`DATABASE_URL`).
-Режим «без входа»: один пользователь, публичный доступ защищается `API_TOKEN`.
-
-```bash
-# запуск всей связки в контейнерах (Postgres + API [+ бот/синк по профилям])
-docker compose up --build              # API на :8000, Postgres рядом
-docker compose --profile telegram up   # добавить Telegram-бота
-docker compose --profile sync run --rm sync  # разовая синхронизация каталога
+```markdown
+**зима, цветотип, палитра.** Зимнему цветотипу идут чистые холодные цвета…
 ```
 
-## Свежесть каталога и персонализация (см. [ADR-002](docs/adr/ADR-002-catalog-sync-and-rl.md))
+---
 
-**Дельта-синхронизация.** `scripts/sync_catalog.py` тянет фиды магазинов через адаптеры
-([src/stylist/rag/adapters.py](src/stylist/rag/adapters.py)), сравнивает по контент-хешу и
-делает upsert ([src/stylist/rag/sync.py](src/stylist/rag/sync.py)): **добавляет новинки**
-(поле `first_seen`), **обновляет** изменившиеся цены/наличие, остальное не трогает.
-Идемпотентно. Запуск по cron/launchd/APScheduler. `new_arrivals()` — для проактивных
-уведомлений о новинках «в вашем стиле».
+## Настройки
 
-**RL, где он уместен.** Контекстный бандит
-([src/stylist/personalization/bandit.py](src/stylist/personalization/bandit.py)) учится на
-реакциях 👍/👎/«куплю» и реранжирует выдачу в `retriever` (флаг `PERSONALIZATION`).
-Reflexion-петля: `critic` пишет текстовые «уроки», `composer` учитывает их на повторной
-сборке. Полный multi-agent RL сознательно не используется — обоснование в ADR-002.
+Все параметры — в `.env` (шаблон: `.env.example`). Ключевые:
 
-## Качество: benchmark и eval
+| Переменная | По умолчанию | Смысл |
+|---|---|---|
+| `STUB_LLM` | `true` | `true` — без обращений к модели, на эвристиках |
+| `STUB_VISION` | `true` | `true` — фото не анализируются, берутся типовые значения |
+| `LLM_API_KEY` | — | ключ провайдера (нужен при `STUB_LLM=false`) |
+| `LLM_BASE_URL` | `https://api.openai.com/v1` | для OpenRouter: `https://openrouter.ai/api/v1` |
+| `AGENT_TYPE` | `simple` | `stub` — заглушка, ничего не подбирает |
 
-- **Benchmark:** [evals/benchmark.jsonl](evals/benchmark.jsonl) — 12 кейсов `input → expected`.
-- **Три типа проверок:**
-  1. программный ассерт — [evals/assertions.py](evals/assertions.py) (бюджет/размер/наличие/слоты);
-  2. LLM-as-judge — [evals/judge.py](evals/judge.py) (гармония/уместность ≥ 4);
-  3. корректность tool-call — [evals/tool_calls.py](evals/tool_calls.py) (composer только из найденных ID; поиск с фильтром «Москва»; наличие проверено до выдачи).
+**Внимание:** при `STUB_LLM=false` каждый запрос идёт к платному API.
 
-## Метрики
+---
 
-| Метрика | Значение |
-|---------|----------|
-| success_rate | заполняется из `run_bench.py` |
-| latency p95 | заполняется из `run_bench.py` |
-| cost per run | $0.00 в STUB; заполняется после подключения LLM/vision |
+## Что дальше
 
-> В STUB-режиме метрики отражают детерминированную логику поиска/сборки. Реальные значения —
-> после подключения облачного vision и text-LLM.
-
-## Observability — LangFuse
-
-Трейс на каждый запуск (узлы, tool-вызовы, токены, длительность). **Фото не логируются** —
-только хеш и извлечённые атрибуты ([src/stylist/obs/langfuse_cb.py](src/stylist/obs/langfuse_cb.py)).
-
-## Security-checklist
-
-| Пункт | Статус |
-|-------|--------|
-| Согласие на обработку фото (биометрия) | ⛳ открыто |
-| Retention/удаление фото (`/delete_me`, TTL) | ⛳ открыто |
-| Фото не попадают в трейсы/логи | ✅ |
-| Шифрование фото at-rest | ⛳ открыто |
-| Prompt-injection (текст/изображение) | ⚠️ частично (см. кейс c11) |
-| Allowlist доменов в ссылках выдачи | ✅ (ссылки из `Item.url`, не из генерации) |
-| Rate limiting на пользователя | ⛳ открыто |
-| Управление секретами (`.env`) | ✅ |
-| Cost guard + кэш vision по хешу фото | ⚠️ частично |
-| Отказ для несовершеннолетних / NSFW | ⛳ открыто |
-
-Легенда: ✅ реализовано · ⚠️ частично · ⛳ открыто.
-
-## Структура
-
-```
-src/stylist/
-  api/     app.py                                    # FastAPI backend (мозг за HTTP)
-  graph/   state.py · nodes.py · edges.py · build.py # LangGraph
-  db/      session.py · models.py · repo.py          # SQLAlchemy: SQLite/Postgres
-  tools/   catalog.py · vision.py · styling_rules.py · collage.py
-  rag/     adapters.py · sync.py                      # адаптеры магазинов + дельта-sync
-  personalization/  bandit.py · feedback.py          # контекстный бандит (RL)
-  obs/     langfuse_cb.py
-  bot/     telegram_app.py                            # тонкий HTTP-клиент API
-evals/     benchmark.jsonl · assertions.py · judge.py · tool_calls.py · run_bench.py
-scripts/   sync_catalog.py · demo_personalization.py
-data/      catalog_snapshot.sample.json · feeds/
-Dockerfile · docker-compose.yml
-docs/adr/  ADR-001-architecture.md · ADR-002-catalog-sync-and-rl.md · ADR-003-backend-service-and-deploy.md
-```
+- Telegram-бот поверх того же API
+- Загрузка фото для реального анализа внешности и вкуса
+- Векторный поиск вместо TF-IDF в базе знаний

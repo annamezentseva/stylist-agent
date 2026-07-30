@@ -10,3 +10,5 @@ data/*.db
 data/catalog.json
 data/feedback.jsonl
 .DS_Store
+node_modules/
+dist/
