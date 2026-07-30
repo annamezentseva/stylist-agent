@@ -1,9 +1,10 @@
-"""Клиент LLM через OpenRouter (OpenAI-совместимый Chat Completions API).
+"""Клиент LLM: любой OpenAI-совместимый Chat Completions API.
 
 Слой, который прячет конкретного провайдера. Агент вызывает `complete` и
-`complete_structured`, ничего не зная про OpenRouter, ключи и HTTP. Один-в-один
-идея из Workshop 1: структурный вызов кладёт в system JSON Schema модели,
-включает response_format=json_object и валидирует ответ через pydantic.
+`complete_structured`, ничего не зная про OpenAI, OpenRouter, ключи и HTTP —
+провайдер меняется одной настройкой `llm_base_url`. Один-в-один идея из
+Workshop 1: структурный вызов кладёт в system JSON Schema модели, включает
+response_format=json_object и валидирует ответ через pydantic.
 """
 
 from __future__ import annotations
@@ -16,11 +17,11 @@ from app.agent.base import LLM, TModel
 from app.config import Settings
 
 
-class OpenRouterLLM(LLM):
+class OpenAICompatibleLLM(LLM):
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._headers = {
-            "Authorization": f"Bearer {settings.openrouter_api_key}",
+            "Authorization": f"Bearer {settings.llm_api_key}",
             "Content-Type": "application/json",
         }
 
@@ -32,7 +33,7 @@ class OpenRouterLLM(LLM):
 
     async def _chat(self, payload: dict) -> dict:
         """Единая точка похода в API."""
-        url = f"{self._settings.openrouter_base_url}/chat/completions"
+        url = f"{self._settings.llm_base_url}/chat/completions"
         async with httpx.AsyncClient(timeout=self._settings.llm_timeout_seconds) as client:
             response = await client.post(url, headers=self._headers, json=payload)
             response.raise_for_status()

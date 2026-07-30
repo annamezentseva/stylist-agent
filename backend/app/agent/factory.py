@@ -4,19 +4,19 @@ import logging
 
 from app.agent.base import LLM, Agent, Catalog, Retriever, Vision
 from app.agent.catalog import DbCatalog
-from app.agent.llm import OpenRouterLLM
+from app.agent.llm import OpenAICompatibleLLM
 from app.agent.rag import LocalRetriever
 from app.agent.simple import SimpleStylistAgent
 from app.agent.stub import StubStylistAgent
-from app.agent.vision import OpenRouterVision, StubVision
+from app.agent.vision import ApiVision, StubVision
 from app.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
 
 def build_llm(settings: Settings) -> LLM:
-    # Пока провайдер один. Здесь же можно вернуть локальную LLM или мок.
-    return OpenRouterLLM(settings)
+    # Провайдер задаётся llm_base_url (OpenAI, OpenRouter, локальная модель).
+    return OpenAICompatibleLLM(settings)
 
 
 def build_retriever(settings: Settings) -> Retriever:
@@ -29,9 +29,9 @@ def build_catalog(settings: Settings) -> Catalog:
 
 def build_vision(settings: Settings) -> Vision:
     # Без ключа фото анализировать нечем — возвращаем детерминированную заглушку.
-    if settings.stub_vision or not settings.openrouter_api_key:
+    if settings.stub_vision or not settings.vision_key:
         return StubVision()
-    return OpenRouterVision(settings)
+    return ApiVision(settings)
 
 
 def build_agent(settings: Settings | None = None) -> Agent:

@@ -1,10 +1,10 @@
 """Vision: анализ фотографий (внешность и вкус) со структурным выводом.
 
 Две реализации одного интерфейса `Vision`:
-  * StubVision       — детерминированные атрибуты без сети и ключей (по умолчанию).
-                       Позволяет всему приложению работать «из коробки».
-  * OpenRouterVision — боевой режим: мультимодальная модель извлекает атрибуты из
-                       фото и сразу валидируется в Appearance / StyleProfile.
+  * StubVision  — детерминированные атрибуты без сети и ключей (по умолчанию).
+                  Позволяет всему приложению работать «из коробки».
+  * ApiVision   — боевой режим: мультимодальная модель извлекает атрибуты из
+                  фото и сразу валидируется в Appearance / StyleProfile.
 
 ВАЖНО (приватность): в боевом режиме фото уходят к внешнему провайдеру. Не
 логируйте сами изображения.
@@ -53,7 +53,7 @@ class StubVision(Vision):
         )
 
 
-# --- Боевой режим: мультимодальный вызов OpenRouter со structured output ---
+# --- Боевой режим: мультимодальный вызов API со structured output ---
 
 
 _APPEARANCE_PROMPT = (
@@ -83,11 +83,11 @@ def _image_url(ref: str) -> str:
     return f"data:image/jpeg;base64,{ref}"
 
 
-class OpenRouterVision(Vision):
+class ApiVision(Vision):
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._headers = {
-            "Authorization": f"Bearer {settings.openrouter_api_key}",
+            "Authorization": f"Bearer {settings.vision_key}",
             "Content-Type": "application/json",
         }
 
@@ -112,7 +112,7 @@ class OpenRouterVision(Vision):
             "messages": [{"role": "user", "content": content}],
             "response_format": {"type": "json_object"},
         }
-        url = f"{self._settings.openrouter_base_url}/chat/completions"
+        url = f"{self._settings.llm_base_url}/chat/completions"
         async with httpx.AsyncClient(timeout=self._settings.llm_timeout_seconds) as client:
             resp = await client.post(url, headers=self._headers, json=payload)
             resp.raise_for_status()
