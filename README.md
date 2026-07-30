@@ -8,7 +8,7 @@
 и слой агента за абстрактными интерфейсами.
 
 > Предыдущая версия проекта (мультиагентный граф на LangGraph, RL-персонализация,
-> LangFuse) описана в [docs/README-графовая-версия.md](docs/README-графовая-версия.md).
+> LangFuse) описана в [docs/README-graph-version.md](docs/README-graph-version.md).
 > Её код доступен в истории git — коммит `f68aa5e`.
 
 ---
