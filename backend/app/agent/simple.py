@@ -19,7 +19,7 @@ import re
 from typing import Literal
 
 from app.agent.base import LLM, Agent, Catalog, Retriever, Vision
-from app.agent.compose import compose_look, occasion_tags
+from app.agent.outfit import compose_look, occasion_tags
 from app.agent.prompts import (
     SYSTEM_PROMPT_ADVICE,
     SYSTEM_PROMPT_NLU,
