@@ -105,7 +105,20 @@ def compose_look(
     style_profile: StyleProfile,
     default_budget: int,
 ) -> Look:
-    """Жадно собрать образ по слотам в рамках бюджета."""
+    """Собрать образ по слотам, НЕ выходя за бюджет.
+
+    Алгоритм в два прохода — «сначала одеться, потом улучшать»:
+
+      1. Берём самое дешёвое в каждом обязательном слоте. Это минимальная
+         цена полного образа. Не влезли в бюджет — образа нет вообще, и мы
+         честно об этом говорим (лучше отказ, чем наряд дороже запрошенного).
+      2. На остаток бюджета последовательно улучшаем слоты: меняем вещь на
+         лучшую по вкусу и цвету из тех, что ещё по карману.
+
+    Прежний однопроходный вариант брал в первый слот самое подходящее (и
+    дорогое), а на последний слот денег уже не оставалось — и он молча
+    превышал лимит.
+    """
     scorer = make_scorer(appearance.color_type, style_profile.palette)
     taste = set(style_profile.styles) | set(occasion_tags(constraints.occasion))
     budget = constraints.budget_rub or default_budget
@@ -114,32 +127,49 @@ def compose_look(
     for it in items:
         by_slot.setdefault(it.category, []).append(it)
 
-    chosen: list[Item] = []
-    total = 0
-    for slot in _required_slots(constraints):
-        cands = sorted(
-            by_slot.get(slot, []),
+    slots = _required_slots(constraints)
+
+    # --- Проход 1: минимальный полный образ ---
+    chosen: dict[str, Item] = {}
+    for slot in slots:
+        cands = by_slot.get(slot, [])
+        if cands:
+            chosen[slot] = min(cands, key=lambda it: it.price)
+
+    total = sum(it.price for it in chosen.values())
+    if not chosen or total > budget:
+        # Даже в самом дешёвом виде образ не помещается в бюджет.
+        return Look(items=[], rationale="")
+
+    # --- Проход 2: улучшаем на остаток ---
+    for slot in slots:
+        current = chosen.get(slot)
+        if current is None:
+            continue
+        ranked = sorted(
+            by_slot[slot],
             key=lambda it: (
                 -len(taste & set(it.style_tags)),  # ближе к вкусу/поводу
                 -scorer(it.color),                  # уместнее по цвету
                 it.price,                           # дешевле
             ),
         )
-        pick = next((c for c in cands if total + c.price <= budget), None)
-        if pick is None and cands:
-            pick = min(cands, key=lambda it: it.price)  # фолбэк: самое дешёвое
-        if pick is not None:
-            chosen.append(pick)
-            total += pick.price
+        for cand in ranked:
+            if total - current.price + cand.price <= budget:
+                total += cand.price - current.price
+                chosen[slot] = cand
+                break
+
+    items_out = [chosen[s] for s in slots if s in chosen]
 
     # Один аксессуар, если остался бюджет — приятный, но не обязательный штрих.
     for acc in sorted(by_slot.get("аксессуар", []), key=lambda it: it.price):
         if total + acc.price <= budget:
-            chosen.append(acc)
+            items_out.append(acc)
             total += acc.price
             break
 
-    return Look(items=chosen, rationale=_rationale(chosen, constraints, appearance, total))
+    return Look(items=items_out, rationale=_rationale(items_out, constraints, appearance, total))
 
 
 def _rationale(
