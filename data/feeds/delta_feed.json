@@ -1,0 +1,4 @@
+[
+  {"id": "top-white-shirt", "title": "Белая рубашка оверсайз", "brand": "Befree", "category": "верх", "color": "белый", "price": 2490, "sizes": ["S", "M", "L"], "style_tags": ["минимализм", "smart-casual", "белый"], "in_stock": true, "moscow_available": true, "store": "Lamoda", "url": "https://example.ru/top-white-shirt", "image_url": ""},
+  {"id": "top-beige-cardigan", "title": "Бежевый кардиган", "brand": "12Storeez", "category": "верх", "color": "бежевый", "price": 5490, "sizes": ["S", "M", "L"], "style_tags": ["минимализм", "smart-casual", "бежевый"], "in_stock": true, "moscow_available": true, "store": "12Storeez", "url": "https://example.ru/top-beige-cardigan", "image_url": ""}
+]

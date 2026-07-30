@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: stylist
+      POSTGRES_PASSWORD: stylist
+      POSTGRES_DB: stylist
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stylist"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://stylist:stylist@postgres:5432/stylist
+      STUB_LLM: "true"
+      CATALOG_MODE: snapshot
+      # API_TOKEN: <секрет для защиты публичного API>
+      # VISION_API_KEY / LLM_API_KEY: <при STUB_LLM=false>
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads:/app/data/uploads
+
+  bot:
+    build: .
+    command: ["python", "-m", "stylist.bot.telegram_app"]
+    environment:
+      API_URL: http://api:8000
+      # TELEGRAM_TOKEN: <токен бота>
+      # API_TOKEN: <тот же секрет, что у api>
+    depends_on:
+      - api
+    profiles: ["telegram"]   # включается: docker compose --profile telegram up
+
+  sync:
+    build: .
+    command: ["python", "scripts/sync_catalog.py"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://stylist:stylist@postgres:5432/stylist
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["sync"]       # разовый прогон: docker compose --profile sync run --rm sync
+
+volumes:
+  pgdata:
+  uploads:

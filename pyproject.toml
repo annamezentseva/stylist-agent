@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stylist"
+version = "1.0.0"
+description = "Telegram-бот-стилист на мультиагентном графе LangGraph: образы под внешность и вкус из вещей, доступных в Москве"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=0.2.0",
+    "langchain-core>=0.3.0",
+    "langchain>=0.3",          # нужен для langfuse.langchain.CallbackHandler
+    "pydantic>=2.7",
+    "sqlalchemy>=2.0",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27",
+    "langfuse>=3",             # v3/v4: интеграция через langfuse.langchain
+    "openai>=2",               # боевой vision/LLM-режим; >=2 — нужен chat.completions.parse
+    "aiogram>=3.4",
+    "python-dotenv>=1.0",
+    "psycopg[binary]>=3.1",
+]
+
+[project.optional-dependencies]
+media = ["pillow>=10"]         # коллажи образов, даунскейл фото
+dev = ["pytest>=8"]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
